@@ -1,7 +1,11 @@
-# nonlinear-analyzer
+# Nonlinear Dynamics Analyzer
+
+Software interativo para estudo e análise de sistemas não lineares 1D.
+
+Desenvolvido como ferramenta de estudo acompanhando
+*Nonlinear Dynamics and Chaos* — Strogatz.
 
 ## Estrutura
-
 ```
 nonlinear-analyzer/
 ├── backend/
@@ -26,22 +30,25 @@ nonlinear-analyzer/
             └── useAnalysis.js   ← debounce + chamada à API
 ```
 
-## Setup
+## Funcionalidades
+- Phase Portrait com pontos fixos e campo de fluxo
+- Decomposição f(x) = g(x) + h(x) com interseções
+- Slope Field com trajetórias IVP
+- Análise de estabilidade: simbólica (sympy) + numérica (scipy)
 
+## Stack
+- Backend: FastAPI + sympy + scipy
+- Frontend: React + Plotly.js
+
+## Setup
 ### Backend
 ```bash
+conda activate nonlinear-analyzer
 cd backend
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
-
 ### Frontend
 ```bash
 cd frontend
-npm install
-npm run dev
+npm install && npm run dev
 ```
-
-API docs: http://localhost:8000/docs
