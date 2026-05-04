@@ -45,14 +45,13 @@ def health():
 def analyze_route(req: AnalyzeRequest):
     """
     Recebe as equações e parâmetros, retorna curvas + pontos fixos + estabilidade.
-
-    # TODO:
-    #   - Chamar analyze(req) de analyzer.py
-    #   - Capturar ValueError (parse inválido) e levantar HTTPException(400)
-    #   - Capturar exceções genéricas e levantar HTTPException(500)
-    #   - Retornar o AnalyzeResponse diretamente (FastAPI serializa para JSON)
     """
-    raise NotImplementedError
+    try:
+        return analyze(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno: {e}")
 
 
 # ── /slope_field ───────────────────────────────────────────────────────────────
@@ -61,10 +60,10 @@ def analyze_route(req: AnalyzeRequest):
 def slope_field_route(req: SlopeFieldRequest):
     """
     Recebe a equação + IVPs, retorna o grid de traços e as trajetórias integradas.
-
-    # TODO:
-    #   - Chamar solve_slope_field(req) de solver.py
-    #   - Mesma estrutura de tratamento de erro do /analyze
-    #   - Retornar SlopeFieldResponse
     """
-    raise NotImplementedError
+    try:
+        return solve_slope_field(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro interno: {e}")

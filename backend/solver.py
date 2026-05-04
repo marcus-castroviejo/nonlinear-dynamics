@@ -18,51 +18,68 @@ def compute_slope_grid(f_num, req: SlopeFieldRequest) -> list[SlopeGridPoint]:
     Gera os pontos do grid onde serão desenhados os traços de inclinação.
     Em sistemas autônomos ẋ = f(x), a inclinação não depende de t —
     mas mantemos o grid 2D (t, x) para compatibilidade com o Slope Field.
-
-    # TODO:
-    #   - Criar arrays t_vals = np.linspace(req.t_min, req.t_max, req.n_t)
-    #                           x_vals = np.linspace(req.x_min, req.x_max, req.n_x)
-    #   - Para cada par (t_i, x_j): calcular slope = float(f_num(x_j))
-    #   - Retornar lista de SlopeGridPoint(t=t_i, x=x_j, slope=slope)
-    #   - Tratar valores muito grandes (|slope| > 1e6): substituir por np.nan
-    #     para não distorcer os traços no frontend
     """
-    raise NotImplementedError
+    t_vals = np.linspace(req.t_min, req.t_max, req.n_t)
+    x_vals = np.linspace(req.x_min, req.x_max, req.n_x)
+
+    slopes = np.broadcast_to(
+        np.asarray(f_num(x_vals), dtype=float),
+        (req.n_t, req.n_x),
+    )
+
+    points = []
+    for i, t in enumerate(t_vals):
+        for j, xv in enumerate(x_vals):
+            slope = slopes[i, j]
+            if abs(slope) > 1e6:
+                slope = float("nan")
+            points.append(SlopeGridPoint(t=float(t), x=float(xv), slope=slope))
+
+    return points
 
 
 def integrate_ivp(f_num, ivp: dict, req: SlopeFieldRequest) -> Trajectory:
     """
     Integra uma condição inicial usando solve_ivp com método RK45.
-
-    # TODO:
-    #   - Extrair x0 = ivp["x0"], t0 = ivp["t0"]
-    #   - Definir ode = lambda t, y: [f_num(y[0])]
-    #     (solve_ivp espera sistemas, então y é vetor)
-    #   - Chamar solve_ivp(
-    #         ode,
-    #         t_span=(t0, req.t_max),
-    #         y0=[x0],
-    #         method='RK45',
-    #         dense_output=False,
-    #         max_step=0.05,          # resolução suficiente para plot suave
-    #         events=None
-    #     )
-    #   - Extrair t_arr = sol.t.tolist(), x_arr = sol.y[0].tolist()
-    #   - Tratar divergência: se qualquer |x| > req.x_max * 3, truncar aí
-    #   - Retornar Trajectory(x0=x0, t0=t0, t_arr=t_arr, x_arr=x_arr)
     """
-    raise NotImplementedError
+    x0 = ivp["x0"]
+    t0 = ivp["t0"]
+    limit = abs(req.x_max) * 3
+
+    def ode(_t, y):
+        return [f_num(y[0])]
+
+    def diverged(_t, y):
+        return abs(y[0]) - limit
+    diverged.terminal  = True
+    diverged.direction = 1
+
+    sol = solve_ivp(
+        ode,
+        t_span=(t0, req.t_max),
+        y0=[x0],
+        method="RK45",
+        dense_output=False,
+        max_step=0.05,
+        events=diverged,
+    )
+
+    return Trajectory(
+        x0=x0,
+        t0=t0,
+        t_arr=sol.t.tolist(),
+        x_arr=sol.y[0].tolist(),
+    )
 
 
 def solve_slope_field(req: SlopeFieldRequest) -> SlopeFieldResponse:
     """
     Função principal do solver — orquestra grid + IVPs.
-
-    # TODO:
-    #   1. parse_expr(req.f_expr) → sym_f
-    #   2. make_numpy_func(sym_f, req.r) → f_num
-    #   3. compute_slope_grid(f_num, req) → slope_grid
-    #   4. Para cada ivp em req.ivps: integrate_ivp(f_num, ivp, req) → Trajectory
-    #   5. Retornar SlopeFieldResponse(slope_grid=..., trajectories=...)
     """
-    raise NotImplementedError
+    sym_f = parse_expr(req.f_expr)
+    f_num = make_numpy_func(sym_f, req.r)
+
+    slope_grid   = compute_slope_grid(f_num, req)
+    trajectories = [integrate_ivp(f_num, ivp, req) for ivp in req.ivps]
+
+    return SlopeFieldResponse(slope_grid=slope_grid, trajectories=trajectories)

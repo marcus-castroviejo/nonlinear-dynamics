@@ -25,124 +25,183 @@ x, r = sp.symbols('x r')
 def parse_expr(expr_str: str) -> sp.Expr:
     """
     Converte uma string digitada pelo usuário em expressão sympy.
-
-    # TODO:
-    #   - Usar sp.sympify(expr_str, locals={'x': x, 'r': r})
-    #   - Tratar exceção sp.SympifyError e levantar ValueError com mensagem clara
-    #   - Considerar substituições convenientes: "^" → "**", "e" → sp.E
     """
-    raise NotImplementedError
+    normalized = expr_str.replace("^", "**")
+    try:
+        return sp.sympify(normalized, locals={"x": x, "r": r, "e": sp.E})
+    except sp.SympifyError:
+        raise ValueError(f"Expressão inválida: '{expr_str}'")
 
 
 def make_numpy_func(sym_expr: sp.Expr, r_val: float):
     """
     Converte uma expressão sympy em função Python f(x_array) → array numpy.
     Substitui o símbolo r pelo valor numérico r_val.
-
-    # TODO:
-    #   - Substituir r por r_val: sym_expr.subs(r, r_val)
-    #   - Usar sp.lambdify(x, expr_substituted, modules='numpy')
-    #   - Retornar a função lambdified
     """
-    raise NotImplementedError
+    expr_sub = sym_expr.subs(r, r_val)
+    return sp.lambdify(x, expr_sub, modules="numpy")
 
 
 def find_fixed_points(f_num, x_min: float, x_max: float) -> list[float]:
     """
     Encontra numericamente os zeros de f(x) no intervalo [x_min, x_max].
     Estratégia: varredura + bisseção em cada intervalo onde há mudança de sinal.
-
-    # TODO:
-    #   - Criar grid denso de x (ex: 1000 pontos) e avaliar f_num(grid)
-    #   - Detectar mudanças de sinal: onde f_num(grid[i]) * f_num(grid[i+1]) < 0
-    #   - Para cada trecho com mudança de sinal, usar scipy.optimize.brentq
-    #     para encontrar o zero com precisão (tol=1e-10)
-    #   - Desduplicar zeros muito próximos (tolerância ~1e-6)
-    #   - Retornar lista de floats ordenada
     """
-    raise NotImplementedError
+    grid = np.linspace(x_min, x_max, 1000)
+    vals = np.broadcast_to(np.asarray(f_num(grid), dtype=float), grid.shape)
+
+    signs = np.sign(vals)
+    zeros = []
+    for i in range(len(grid) - 1):
+        if np.isnan(vals[i]) or np.isnan(vals[i + 1]):
+            continue
+        if signs[i] == 0:
+            zeros.append(float(grid[i]))
+        elif signs[i] != signs[i + 1] and signs[i + 1] != 0:
+            root = optimize.brentq(f_num, grid[i], grid[i + 1], xtol=1e-10)
+            zeros.append(root)
+    if not np.isnan(vals[-1]) and signs[-1] == 0:
+        zeros.append(float(grid[-1]))
+
+    # desduplicar zeros muito próximos
+    deduped = []
+    for z in sorted(zeros):
+        if not deduped or abs(z - deduped[-1]) > 1e-6:
+            deduped.append(z)
+
+    return deduped
 
 
 def find_fixed_points_symbolic(sym_f: sp.Expr, r_val: float) -> dict[float, str]:
     """
     Tenta resolver f(x) = 0 analiticamente com sympy.
     Retorna dict {x_star_numeric: "expressão_exata"}.
-
-    # TODO:
-    #   - Substituir r por r_val em sym_f
-    #   - Usar sp.solve(sym_f_sub, x) para obter raízes simbólicas
-    #   - Para cada raiz: avaliar numericamente, formatar como string legível
-    #   - Se sp.solve falhar ou retornar [], retornar {}
-    #   - Tratar raízes complexas: ignorar (só queremos reais)
     """
-    raise NotImplementedError
+    try:
+        sym_f_sub = sym_f.subs(r, sp.nsimplify(r_val))
+        roots = sp.solve(sym_f_sub, x)
+    except Exception:
+        return {}
+
+    result = {}
+    for root in roots:
+        # ignora raízes complexas
+        if not root.is_real:
+            continue
+        x_num = float(root.evalf())
+        result[x_num] = str(sp.simplify(root))
+
+    return result
 
 
 def classify_fixed_point(df_val: float) -> tuple[str, str]:
     """
     Classifica o ponto fixo e seu tipo no potencial com base em f'(x*).
-
-    # TODO:
-    #   - Se df_val < -1e-10 : stability="stable",   potential_type="local_min"
-    #   - Se df_val >  1e-10 : stability="unstable",  potential_type="local_max"
-    #   - Se |df_val| <= 1e-10 : stability="inconclusive", potential_type="inconclusive"
-    #     (linearização não resolve — caso não-hiperbólico do Strogatz seção 2.4)
-    #   - Retornar (stability, potential_type)
     """
-    raise NotImplementedError
+    if df_val < -1e-10:
+        return "stable", "local_min"
+    if df_val > 1e-10:
+        return "unstable", "local_max"
+    return "inconclusive", "inconclusive"
 
 
 def compute_potential(sym_f: sp.Expr, r_val: float) -> tuple[sp.Expr, callable]:
     """
     Calcula V(x) = -∫f(x)dx simbolicamente e retorna expressão + função numpy.
-
-    # TODO:
-    #   - sym_f_sub = sym_f.subs(r, r_val)
-    #   - v_sym = -sp.integrate(sym_f_sub, x)
-    #   - Simplificar: sp.simplify(v_sym)
-    #   - Gerar função numpy com lambdify
-    #   - Retornar (v_sym, v_num)
     """
-    raise NotImplementedError
+    sym_f_sub = sym_f.subs(r, sp.nsimplify(r_val))
+    v_sym = sp.simplify(-sp.integrate(sym_f_sub, x))
+    if v_sym.has(sp.Integral):
+        raise ValueError("Não foi possível integrar f(x) simbolicamente para obter V(x).")
+    try:
+        v_num = sp.lambdify(x, v_sym, modules="numpy")
+    except Exception:
+        raise ValueError("V(x) contém funções especiais sem suporte numérico pelo NumPy.")
+    return v_sym, v_num
 
 
 def find_intersections(g_num, h_num, x_min: float, x_max: float) -> list[Intersection]:
     """
     Encontra pontos onde g(x) = h(x), i.e., zeros de g(x) - h(x).
-    Mesma estratégia de varredura + brentq usada em find_fixed_points.
-
-    # TODO:
-    #   - Definir diff_num = lambda xv: g_num(xv) - h_num(xv)
-    #   - Reutilizar a lógica de find_fixed_points sobre diff_num
-    #   - Para cada zero x_i: criar Intersection(x=x_i, y=float(g_num(x_i)))
-    #   - Retornar lista de Intersection
     """
-    raise NotImplementedError
+    diff_num = lambda xv: g_num(xv) - h_num(xv)
+    x_zeros = find_fixed_points(diff_num, x_min, x_max)
+    return [Intersection(x=xi, y=float(g_num(xi))) for xi in x_zeros]
 
 
 def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     """
     Função principal — orquestra toda a análise e monta o AnalyzeResponse.
-
-    # TODO (sequência):
-    #   1. parse_expr(req.f_expr) → sym_f
-    #   2. sym_df = sp.diff(sym_f, x)  — derivada simbólica
-    #   3. make_numpy_func(sym_f, req.r) → f_num
-    #   4. make_numpy_func(sym_df, req.r) → df_num
-    #   5. compute_potential(sym_f, req.r) → (v_sym, v_num)
-    #   6. Criar grid: x_vals = np.linspace(req.x_min, req.x_max, req.n_points)
-    #   7. Avaliar f_num, v_num no grid → f_vals, v_vals
-    #   8. Se req.g_expr: parse e avaliar g; senão g_vals = None
-    #   9. Se req.h_expr: parse e avaliar h; senão h_vals = None
-    #  10. find_fixed_points(f_num, ...) → x_stars numéricos
-    #  11. find_fixed_points_symbolic(sym_f, req.r) → mapa exato
-    #  12. Para cada x* em x_stars:
-    #        df_val = float(df_num(x*))
-    #        stability, pot_type = classify_fixed_point(df_val)
-    #        tau = 1/|df_val| se df_val ≠ 0 else inf
-    #        x_exact = mapa_exato.get(x*, None)
-    #        criar FixedPoint(...)
-    #  13. Se g e h disponíveis: find_intersections(...) → intersections
-    #  14. Montar e retornar AnalyzeResponse(...)
     """
-    raise NotImplementedError
+    # 1-2. parse e derivada simbólica
+    sym_f = parse_expr(req.f_expr)
+    sym_df = sp.diff(sym_f, x)
+
+    # 3-4. funções numpy
+    f_num  = make_numpy_func(sym_f,  req.r)
+    df_num = make_numpy_func(sym_df, req.r)
+
+    # 5. potencial
+    v_sym, v_num = compute_potential(sym_f, req.r)
+
+    # 6-7. grid e curvas principais
+    x_vals = np.linspace(req.x_min, req.x_max, req.n_points)
+    f_vals = np.broadcast_to(np.asarray(f_num(x_vals), dtype=float), x_vals.shape).tolist()
+    v_vals = np.broadcast_to(np.asarray(v_num(x_vals), dtype=float), x_vals.shape).tolist()
+
+    # 8-9. curvas opcionais g e h
+    g_num_fn = h_num_fn = None
+    g_vals = h_vals = None
+    if req.g_expr:
+        g_num_fn = make_numpy_func(parse_expr(req.g_expr), req.r)
+        g_vals = np.broadcast_to(np.asarray(g_num_fn(x_vals), dtype=float), x_vals.shape).tolist()
+    if req.h_expr:
+        h_num_fn = make_numpy_func(parse_expr(req.h_expr), req.r)
+        h_vals = np.broadcast_to(np.asarray(h_num_fn(x_vals), dtype=float), x_vals.shape).tolist()
+
+    # 10-11. pontos fixos
+    x_stars   = find_fixed_points(f_num, req.x_min, req.x_max)
+    exact_map = find_fixed_points_symbolic(sym_f, req.r)
+
+    # 12. classificar cada ponto fixo
+    df_expr_str = str(sym_df)
+    fixed_points = []
+    for xs in x_stars:
+        df_val     = float(df_num(xs))
+        stability, pot_type = classify_fixed_point(df_val)
+        tau        = 1.0 / abs(df_val) if abs(df_val) > 1e-10 else float("inf")
+        # busca expressão exata pelo ponto numérico mais próximo no mapa
+        x_exact = next(
+            (expr for xk, expr in exact_map.items() if abs(xk - xs) < 1e-6),
+            None
+        )
+        fixed_points.append(FixedPoint(
+            x_star=xs,
+            x_star_exact=x_exact,
+            df_val=df_val,
+            df_expr=df_expr_str,
+            tau=tau,
+            stability=stability,
+            potential_type=pot_type,
+        ))
+
+    # 13. interseções g ∩ h
+    intersections = []
+    if g_num_fn and h_num_fn:
+        intersections = find_intersections(g_num_fn, h_num_fn, req.x_min, req.x_max)
+
+    # 14. montar resposta
+    return AnalyzeResponse(
+        f_expr_parsed=str(sym_f),
+        df_expr=df_expr_str,
+        v_expr=str(v_sym),
+        curves=Curves(
+            x_vals=x_vals.tolist(),
+            f_vals=f_vals,
+            g_vals=g_vals,
+            h_vals=h_vals,
+            v_vals=v_vals,
+        ),
+        fixed_points=fixed_points,
+        intersections=intersections,
+    )
